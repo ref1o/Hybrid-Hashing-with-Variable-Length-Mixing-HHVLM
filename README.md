@@ -16,7 +16,7 @@
 Hybrid Hashing with Variable-Length Mixing (HHVLM) is a cryptographic hashing algorithm designed to offer a balanced approach to security and performance. The algorithm combines non-linear bitwise operations, dynamic memory allocation, and multi-round compression to produce a 256-bit hash from arbitrary input data. This makes it a robust solution for various cryptographic needs, including data integrity checks and secure password storage.
 
 ## Features
-- Strong Collision Resistance: Utilizes non-linear mixing and multi-round compression to enhance collision resistance.
+- Strong Collision Resistance: Utilizes an expanded internal state size and enhanced non-linear mixing to minimize collisions.
 - Dynamic Memory Allocation: Capable of handling inputs of various lengths without the need for pre-defined buffer sizes.
 - Salt Integration: Incorporates a 16-byte salt to protect against precomputed attacks, such as rainbow tables.
 - Moderate Performance: Balances security with speed, making it suitable for both high-security applications and general-purpose use.
@@ -75,23 +75,21 @@ Hash: e0b35391e6b5c406f93b4a196eac4c1fe0a271a2a2e0a27171a2e0a2a271a2e0
 3. Mixing Stage:
   - The data is processed in 32-byte blocks. Each block undergoes non-linear bitwise rotation and XOR operations, combined with modular multiplication for complexity.
 4. Multi-round Compression:
-  - The internal state is compressed through several rounds, further increasing the hash’s security by reducing any residual predictability.
-5. State Extension:
-  - The final internal state is extended across the entire 32-byte output buffer.
-6. Final XOR with Salt:
-  - The first 16 bytes of the output are XORed with the salt, ensuring that even small changes in the input result in a completely different hash.
+  - The internal state, now 512 bits (16 * 32-bit words), undergoes multiple rounds of mixing and compression to ensure thorough entropy distribution and resistance to collisions.
+5. Final Hash Output:
+  - The final state is used to produce a 256-bit hash output, which is further mixed with the initial salt for additional security.
 
 ## Performance
 The HHVLM algorithm has been benchmarked across various input sizes to evaluate its performance and scalability. The results indicate consistent performance, with minimal variations in processing time, regardless of the input length.
 
 | Input Length | Average Time Taken (1000 runs) |
 |:------------:|:-------------------------------|
-| 10           | 0.004561 seconds               |
-| 50           | 0.004991 seconds               |
-| 100          | 0.004570 seconds               |
-| 1000         | 0.004635 seconds               |
-| 10000        | 0.004571 seconds               |
-| 100000       | 0.004794 seconds               |
+| 10           | 0.007379 seconds               |
+| 50           | 0.006622 seconds               |
+| 100          | 0.005356 seconds               |
+| 1000         | 0.005433 seconds               |
+| 10000        | 0.006323 seconds               |
+| 100000       | 0.013721 seconds               |
 
 These results demonstrate that HHVLM is capable of handling varying input sizes efficiently, making it suitable for applications where performance consistency is critical.
 
