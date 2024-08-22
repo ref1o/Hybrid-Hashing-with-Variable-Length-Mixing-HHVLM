@@ -1,11 +1,8 @@
 /*********************************************************************
 * Filename:   hhvlm.c
-* Author:     Federico Fiorelli
-* Disclaimer: This code is presented "as is" without any guarantees.
-* Details:    Implementation of the Hybrid Hashing with Variable-Length 
-              Mixing (HHVLM) algorithm. This algorithm combines non-linear 
-              bitwise operations, dynamic memory allocation, and multi-round 
-              compression to generate a 256-bit hash from arbitrary input data.
+* Author:     Your Name
+* Details:    Updated implementation of the Hybrid Hashing with Variable-Length 
+              Mixing (HHVLM) algorithm to address security concerns.
 *********************************************************************/
 
 /*************************** HEADER FILES ***************************/
@@ -16,112 +13,99 @@
 
 /****************************** MACROS ******************************/
 #define ROTLEFT(a, b) (((a) << (b)) | ((a) >> (32 - (b))))
+#define ROTRIGHT(a, b) (((a) >> (b)) | ((a) << (32 - (b))))
 
 /**************************** VARIABLES *****************************/
+#define STATE_SIZE 16  // 16 * 32 bits = 512-bit state
 
 /*********************** FUNCTION DEFINITIONS ***********************/
 
 /*********************************************************************
-* Function:  rotate_left
-* Details:   Performs a left bitwise rotation on a 32-bit integer.
-* Params:    value - the integer to rotate
-*            shift - the number of bits to rotate by
-* Returns:   The rotated value.
-*********************************************************************/
-uint32_t rotate_left(uint32_t value, int shift) {
-    return ROTLEFT(value, shift);
-}
-
-/*********************************************************************
 * Function:  generate_salt
-* Details:   Generates a simple 16-byte salt. For a more secure 
-             implementation, replace this with a cryptographically 
-             secure random number generator.
-* Params:    salt - a pointer to a 16-byte array where the salt will be stored
+* Details:   Generates a simple 16-byte salt. Replace this with a more
+             secure RNG for production use.
 *********************************************************************/
 void generate_salt(uint8_t salt[16]) {
     for (int i = 0; i < 16; i++) {
-        salt[i] = (uint8_t)(i * 17);  // Simple pattern-based salt generation
+        salt[i] = (uint8_t)(rand() % 256);
     }
 }
 
 /*********************************************************************
-* Function:  extend_state
-* Details:   Extends a 32-bit state across a 32-byte output buffer by 
-             copying the state and rotating it for each 4-byte segment.
-* Params:    state  - the 32-bit state to extend
-*            output - a pointer to a 32-byte buffer to store the extended state
+* Function:  enhanced_mixing
+* Details:   Applies enhanced non-linear mixing to the state.
+* Params:    state - the current internal state
+* Returns:   The mixed state.
 *********************************************************************/
-void extend_state(uint32_t state, uint8_t output[32]) {
-    for (int i = 0; i < 32; i += 4) {
-        memcpy(output + i, &state, 4);  // Copy the 4-byte state into each 4-byte segment of the output buffer
-        state = ROTLEFT(state, 8);  // Rotate the state for diversity in each segment
-    }
+uint32_t enhanced_mixing(uint32_t state) {
+    state ^= ROTLEFT(state, 13);
+    state *= 0x5bd1e995;
+    state ^= ROTRIGHT(state, 15);
+    state *= 0x1b873593;
+    state ^= ROTLEFT(state, 7);
+    state *= 0xcc9e2d51;
+    return state;
 }
 
 /*********************************************************************
 * Function:  hybrid_hash
-* Details:   The main hashing function that processes input data to 
-             produce a 256-bit hash. This function uses dynamic memory 
-             allocation for flexibility.
-* Params:    input  - a pointer to the input data
-*            length - the length of the input data
-*            output - a pointer to a 32-byte buffer to store the resulting hash
+* Details:   Main hashing function with enhanced mixing and compression.
 *********************************************************************/
 void hybrid_hash(const uint8_t *input, size_t length, uint8_t output[32]) {
     uint8_t salt[16];
     generate_salt(salt);
 
-    // Calculate the length after padding
     size_t padded_length = ((length + 16 + 31) / 32) * 32;
-
-    // Dynamically allocate memory for the buffer
     uint8_t *buffer = (uint8_t *)malloc(padded_length);
     if (buffer == NULL) {
         perror("Failed to allocate memory");
         exit(EXIT_FAILURE);
     }
 
-    // Preprocess: Append salt and input, then pad
     memcpy(buffer, salt, 16);
     memcpy(buffer + 16, input, length);
     if (length + 16 < padded_length) {
         memset(buffer + 16 + length, 0, padded_length - (16 + length));
     }
 
-    uint32_t state = 0xdeadbeef; // Arbitrary initial state value
+    uint32_t state[STATE_SIZE] = {0xdeadbeef ^ *(uint32_t *)salt};
+    for (int i = 1; i < STATE_SIZE; ++i) {
+        state[i] = state[i - 1] + 0x12345678;  // Initial diverse state setup
+    }
+
     for (size_t i = 0; i < padded_length; i += 32) {
         uint32_t *block = (uint32_t *)(buffer + i);
         for (int j = 0; j < 8; j++) {
-            state ^= ROTLEFT(block[j], j + i % 32);
-            state = (state * 0x5bd1e995) ^ ROTLEFT(state, 13);
+            for (int k = 0; k < STATE_SIZE; ++k) {
+                state[k] ^= enhanced_mixing(block[j] + salt[j % 16] + state[(k + 1) % STATE_SIZE]);
+                state[k] = enhanced_mixing(state[k]);
+            }
         }
     }
 
-    for (int round = 0; round < 5; ++round) {
-        state ^= ROTLEFT(state, 17);
-        state = (state * 0x5bd1e995) ^ ROTLEFT(state, 13);
+    for (int round = 0; round < 12; ++round) {
+        for (int k = 0; k < STATE_SIZE; ++k) {
+            state[k] = enhanced_mixing(state[k] ^ state[(k + 1) % STATE_SIZE]);
+        }
     }
 
-    extend_state(state, output);
+    for (int i = 0; i < 32; i += 4) {
+        uint32_t temp_state = state[i / 4 % STATE_SIZE];
+        memcpy(output + i, &temp_state, 4);
+    }
 
-    // Final XOR with salt for enhanced security
     for (int i = 0; i < 16; i++) {
         output[i] ^= salt[i];
     }
 
-    // Free the dynamically allocated memory
     free(buffer);
 }
 
 /*********************************************************************
 * Function:  main
-* Details:   A sample main function to demonstrate the usage of the 
-             hybrid_hash function. This function now takes input from 
-             the command line and hashes it.
+* Details:   Example usage of the updated hybrid_hash function.
 *********************************************************************/
 int main(int argc, char *argv[]) {
-    // Check if the correct number of arguments is provided
     if (argc != 2) {
         fprintf(stderr, "Usage: %s \"Your data here\"\n", argv[0]);
         return 1;
@@ -131,7 +115,6 @@ int main(int argc, char *argv[]) {
     const char *data = argv[1];
     hybrid_hash((const uint8_t *)data, strlen(data), hash);
 
-    // Print the resulting hash in hexadecimal format
     printf("Hash: ");
     for (int i = 0; i < 32; i++) {
         printf("%02x", hash[i]);
